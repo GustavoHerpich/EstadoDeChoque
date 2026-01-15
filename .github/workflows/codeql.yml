@@ -1,0 +1,33 @@
+name: CodeQL
+
+on:
+  pull_request:
+    branches: [ "main" ]
+  push:
+    branches: [ "main" ]
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: csharp
+
+      - name: Build project (Unity workaround)
+        run: |
+          dotnet --version || true
+          echo "Unity project - no real build executed"
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
