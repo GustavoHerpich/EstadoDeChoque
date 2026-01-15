@@ -28,4 +28,5 @@ jobs:
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v3
         with:
-          fail-on-error: false
+          upload: true
+          expect-error: true
