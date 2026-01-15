@@ -2,10 +2,8 @@
 [attr]lfs               filter=lfs diff=lfs merge=lfs -text
 [attr]unity-json        eol=lf linguist-language=json
 [attr]unity-yaml        merge=unityyamlmerge eol=lf linguist-language=yaml
-
 # Optionally collapse Unity YAML files on GitHub diffs
 # [attr]unity-yaml        merge=unityyamlmerge text linguist-language=yaml linguist-generated
-
 # Unity source files
 *.cginc                 text
 *.compute               text linguist-language=hlsl
@@ -13,7 +11,6 @@
 *.hlsl                  text linguist-language=hlsl
 *.raytrace              text linguist-language=hlsl
 *.shader                text
-
 # Unity JSON files
 *.asmdef                unity-json
 *.asmref                unity-json
@@ -21,15 +18,13 @@
 *.inputactions          unity-json
 *.shadergraph           unity-json
 *.shadersubgraph        unity-json
-
 # Unity UI Toolkit files
 *.tss                   text diff=css linguist-language=css
 *.uss                   text diff=css linguist-language=css
 *.uxml                  text linguist-language=xml linguist-detectable
-
 # Unity YAML files
 *.anim                  unity-yaml
-*.asset                 unity-yaml
+*.asset filter=lfs diff=lfs merge=lfs -text
 *.brush                 unity-yaml
 *.controller            unity-yaml
 *.flare                 unity-yaml
@@ -52,20 +47,16 @@
 *.spriteatlas           unity-yaml
 *.spriteatlasv2         unity-yaml
 *.terrainlayer          unity-yaml
-*.unity                 unity-yaml
-
+*.unity filter=lfs diff=lfs merge=lfs -text
 # "physic" for 3D but "physics" for 2D
 *.physicMaterial        unity-yaml
 *.physicsMaterial2D     unity-yaml
-
 # Exclude from GitHub stats and diffs: third-party plugins, packages lock file
 Assets/Plugins/**           linguist-generated
 Packages/packages-lock.json linguist-generated
-
 # Unity LFS
 *.cubemap               lfs
 *.unitypackage          lfs
-
 # 3D models
 *.3dm                   lfs
 *.3ds                   lfs
@@ -88,7 +79,6 @@ Packages/packages-lock.json linguist-generated
 *.skp                   lfs
 *.stl                   lfs
 *.ztl                   lfs
-
 # Audio
 *.aif                   lfs
 *.aiff                  lfs
@@ -99,7 +89,6 @@ Packages/packages-lock.json linguist-generated
 *.s3m                   lfs
 *.wav                   lfs
 *.xm                    lfs
-
 # Video
 *.asf                   lfs
 *.avi                   lfs
@@ -110,7 +99,6 @@ Packages/packages-lock.json linguist-generated
 *.mpg                   lfs
 *.ogv                   lfs
 *.wmv                   lfs
-
 # Images
 *.bmp                   lfs
 *.exr                   lfs
@@ -126,7 +114,6 @@ Packages/packages-lock.json linguist-generated
 *.tif                   lfs
 *.tiff                  lfs
 *.webp                  lfs
-
 # Compressed Archive
 *.7z                    lfs
 *.bz2                   lfs
@@ -134,30 +121,23 @@ Packages/packages-lock.json linguist-generated
 *.rar                   lfs
 *.tar                   lfs
 *.zip                   lfs
-
 # Compiled Dynamic Library
 *.dll                   lfs
 *.pdb                   lfs
 *.so                    lfs
-
 # Fonts
 *.otf                   lfs
 *.ttf                   lfs
-
 # Executable/Installer
 *.apk                   lfs
 *.exe                   lfs
-
 # Documents
 *.pdf                   lfs
-
 # ETC
 *.a                     lfs
 *.reason                lfs
 *.rns                   lfs
-
 # Spine export file for Unity
 *.skel.bytes            lfs
-
 # Exceptions for .asset files such as lightning pre-baking
 LightingData.asset     binary
