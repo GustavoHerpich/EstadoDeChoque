@@ -1,4 +1,5 @@
 ﻿<Solution>
+  <Project Path="EstadoDeChoque.Gameplay.csproj" />
   <Project Path="Assembly-CSharp-Editor.csproj" />
   <Project Path="Assembly-CSharp.csproj" />
 </Solution>
