@@ -3,7 +3,7 @@ using UnityEngine;
 namespace EstadoDeChoque.Gameplay.Assets.Game.Features.Player
 {
     [CreateAssetMenu(
-        menuName = "Estado De Choque/Player/First Person Settings",
+        menuName = "EstadoDeChoque/Player/First Person Settings",
         fileName = "FirstPersonPlayerSettings"
     )]
     public sealed class FirstPersonPlayerSettings : ScriptableObject

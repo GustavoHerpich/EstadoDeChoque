@@ -4,61 +4,90 @@ using UnityEngine.UI;
 
 namespace EstadoDeChoque.Gameplay.Assets.Game.Features.UI
 {
+    /// <summary>
+    /// Presenter do HUD de gameplay. Centraliza todas as operações de UI em runtime:
+    /// prompts de interação, stamina, modal de diálogo, objetivos, legendas e fade de tela.
+    /// </summary>
     public sealed class GameplayHudPresenter : MonoBehaviour
     {
+        [Header("Canvas")]
+        [Tooltip("Canvas raiz do HUD. Se nulo, será criado em runtime via EnsureRuntimeUi.")]
         [SerializeField]
         private Canvas _canvas;
 
+        [Header("Stamina")]
+        [Tooltip("Background da barra de stamina.")]
         [SerializeField]
         private Image _staminaBackground;
 
+        [Tooltip("Fill da barra de stamina. Controlado por SetStamina().")]
         [SerializeField]
         private Image _staminaFill;
 
+        [Header("Textos de Gameplay")]
+        [Tooltip("Texto exibido ao aproximar de um objeto interagível.")]
         [SerializeField]
         private Text _interactionPromptText;
 
+        [Tooltip("Texto de objetivo exibido no canto superior esquerdo.")]
         [SerializeField]
         private Text _objectiveText;
 
+        [Tooltip("Texto de mensagem informativa exibida temporariamente.")]
         [SerializeField]
         private Text _infoMessageText;
 
+        [Tooltip("Crosshair central da tela.")]
         [SerializeField]
         private Text _crosshairText;
 
+        [Header("Fade")]
+        [Tooltip("Imagem preta usada para fade in/out de tela.")]
         [SerializeField]
         private Image _fadeImage;
 
+        [Header("Letterbox")]
+        [Tooltip("Barra preta superior para efeito letterbox de cutscene.")]
         [SerializeField]
         private Image _letterboxTop;
 
+        [Tooltip("Barra preta inferior para efeito letterbox de cutscene.")]
         [SerializeField]
         private Image _letterboxBottom;
 
+        [Header("Modal de Diálogo")]
+        [Tooltip("Root do modal. Ativado/desativado por ShowModal e HideModal.")]
         [SerializeField]
         private GameObject _modalRoot;
 
+        [Tooltip("Texto do título do modal.")]
         [SerializeField]
         private Text _modalTitleText;
 
+        [Tooltip("Texto do corpo do modal.")]
         [SerializeField]
         private Text _modalBodyText;
 
+        [Tooltip("Texto do rodapé do modal (instrução de avanço).")]
         [SerializeField]
         private Text _modalFooterText;
 
+        [Header("Legenda de Cutscene")]
+        [Tooltip("Root do painel de legendas.")]
         [SerializeField]
         private GameObject _subtitleRoot;
 
+        [Tooltip("Texto do nome do personagem na legenda.")]
         [SerializeField]
         private Text _subtitleSpeakerText;
 
+        [Tooltip("Texto do corpo da legenda.")]
         [SerializeField]
         private Text _subtitleBodyText;
 
         private Coroutine _hideMessageRoutine;
 
+        /// <summary>Retorna true se o modal de diálogo estiver visível.</summary>
         public bool IsModalVisible => _modalRoot != null && _modalRoot.activeSelf;
 
         private void Awake()
@@ -66,41 +95,50 @@ namespace EstadoDeChoque.Gameplay.Assets.Game.Features.UI
             EnsureRuntimeUi();
         }
 
+        /// <summary>
+        /// Define o texto do prompt de interação. Oculto automaticamente quando o modal está visível.
+        /// </summary>
         public void SetInteractionPrompt(string prompt)
         {
             EnsureRuntimeUi();
             if (IsModalVisible)
-            {
                 prompt = string.Empty;
-            }
 
             _interactionPromptText.text = prompt;
             _interactionPromptText.enabled = !string.IsNullOrWhiteSpace(prompt);
         }
 
+        /// <summary>
+        /// Atualiza a barra de stamina.
+        /// </summary>
+        /// <param name="normalizedValue">Valor entre 0 e 1.</param>
+        /// <param name="visible">Se false, oculta toda a barra.</param>
         public void SetStamina(float normalizedValue, bool visible)
         {
             EnsureRuntimeUi();
-
             _staminaBackground.enabled = visible;
             _staminaFill.enabled = visible;
             _staminaFill.fillAmount = Mathf.Clamp01(normalizedValue);
         }
 
+        /// <summary>
+        /// Exibe uma mensagem temporária na tela. Sobrescreve mensagem anterior.
+        /// </summary>
         public void ShowMessage(string message, float duration = 2f)
         {
             EnsureRuntimeUi();
 
             if (_hideMessageRoutine != null)
-            {
                 StopCoroutine(_hideMessageRoutine);
-            }
 
             _infoMessageText.text = message;
             _infoMessageText.enabled = !string.IsNullOrWhiteSpace(message);
             _hideMessageRoutine = StartCoroutine(HideMessageAfterDelay(duration));
         }
 
+        /// <summary>
+        /// Exibe ou atualiza o texto de objetivo no canto da tela.
+        /// </summary>
         public void ShowObjective(string objectiveText)
         {
             EnsureRuntimeUi();
@@ -108,6 +146,9 @@ namespace EstadoDeChoque.Gameplay.Assets.Game.Features.UI
             _objectiveText.enabled = !string.IsNullOrWhiteSpace(objectiveText);
         }
 
+        /// <summary>
+        /// Exibe o modal de diálogo com título, corpo e rodapé.
+        /// </summary>
         public void ShowModal(
             string title,
             string body,
@@ -125,6 +166,7 @@ namespace EstadoDeChoque.Gameplay.Assets.Game.Features.UI
             _interactionPromptText.enabled = false;
         }
 
+        /// <summary>Oculta o modal de diálogo e restaura o crosshair.</summary>
         public void HideModal()
         {
             EnsureRuntimeUi();
@@ -134,6 +176,11 @@ namespace EstadoDeChoque.Gameplay.Assets.Game.Features.UI
             _interactionPromptText.enabled = false;
         }
 
+        /// <summary>
+        /// Configura as barras de letterbox para cutscenes.
+        /// </summary>
+        /// <param name="visible">Ativa ou desativa o letterbox.</param>
+        /// <param name="heightNormalized">Altura normalizada (0–0.3) em relação a 1080p.</param>
         public void SetLetterbox(bool visible, float heightNormalized = 0.12f)
         {
             EnsureRuntimeUi();
@@ -157,6 +204,9 @@ namespace EstadoDeChoque.Gameplay.Assets.Game.Features.UI
             }
         }
 
+        /// <summary>
+        /// Exibe uma legenda de cutscene com nome do personagem e texto.
+        /// </summary>
         public void ShowSubtitle(string speaker, string body)
         {
             EnsureRuntimeUi();
@@ -170,6 +220,7 @@ namespace EstadoDeChoque.Gameplay.Assets.Game.Features.UI
             _subtitleBodyText.enabled = !string.IsNullOrWhiteSpace(body);
         }
 
+        /// <summary>Oculta o painel de legendas.</summary>
         public void HideSubtitle()
         {
             EnsureRuntimeUi();
@@ -181,6 +232,9 @@ namespace EstadoDeChoque.Gameplay.Assets.Game.Features.UI
             _subtitleRoot.SetActive(false);
         }
 
+        /// <summary>
+        /// Define diretamente o alpha da imagem de fade (0 = transparente, 1 = preto total).
+        /// </summary>
         public void SetFade(float alpha)
         {
             EnsureRuntimeUi();
@@ -189,6 +243,27 @@ namespace EstadoDeChoque.Gameplay.Assets.Game.Features.UI
             fadeColor.a = Mathf.Clamp01(alpha);
             _fadeImage.color = fadeColor;
             _fadeImage.enabled = fadeColor.a > 0.001f;
+        }
+
+        /// <summary>
+        /// Coroutine de fade reutilizável entre <c>from</c> e <c>to</c> ao longo de <c>duration</c> segundos.
+        /// Pode ser executada inline com <c>yield return _hud.Fade(...)</c> a partir de qualquer coroutine.
+        /// </summary>
+        /// <param name="from">Alpha inicial (0–1).</param>
+        /// <param name="to">Alpha final (0–1).</param>
+        /// <param name="duration">Duração em segundos.</param>
+        public IEnumerator Fade(float from, float to, float duration)
+        {
+            float elapsed = 0f;
+            while (elapsed < duration)
+            {
+                elapsed += Time.deltaTime;
+                float t = duration > 0.001f ? Mathf.Clamp01(elapsed / duration) : 1f;
+                SetFade(Mathf.Lerp(from, to, t));
+                yield return null;
+            }
+
+            SetFade(to);
         }
 
         private IEnumerator HideMessageAfterDelay(float duration)
@@ -202,33 +277,25 @@ namespace EstadoDeChoque.Gameplay.Assets.Game.Features.UI
         private void EnsureRuntimeUi()
         {
             if (_canvas != null)
-            {
                 return;
-            }
 
             _canvas = gameObject.GetComponent<Canvas>();
             if (_canvas == null)
-            {
                 _canvas = gameObject.AddComponent<Canvas>();
-            }
 
             _canvas.renderMode = RenderMode.ScreenSpaceOverlay;
             _canvas.pixelPerfect = false;
 
             CanvasScaler scaler = gameObject.GetComponent<CanvasScaler>();
             if (scaler == null)
-            {
                 scaler = gameObject.AddComponent<CanvasScaler>();
-            }
 
             scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
             scaler.referenceResolution = new Vector2(1920f, 1080f);
             scaler.matchWidthOrHeight = 1f;
 
             if (gameObject.GetComponent<GraphicRaycaster>() == null)
-            {
                 gameObject.AddComponent<GraphicRaycaster>();
-            }
 
             Font builtinFont = LoadBuiltinFont();
 
@@ -517,11 +584,14 @@ namespace EstadoDeChoque.Gameplay.Assets.Game.Features.UI
         {
             Font font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
             if (font == null)
-            {
                 font = Resources.GetBuiltinResource<Font>("Arial.ttf");
-            }
-
             return font;
+        }
+
+        private void OnDestroy()
+        {
+            if (_hideMessageRoutine != null)
+                StopCoroutine(_hideMessageRoutine);
         }
     }
 }

@@ -1,6 +1,7 @@
 using EstadoDeChoque.Gameplay.Assets.Game.Features.Interaction;
 using EstadoDeChoque.Gameplay.Assets.Game.Features.Player;
 using EstadoDeChoque.Gameplay.Assets.Game.Features.UI;
+using EstadoDeChoque.Gameplay.Assets.Game.Shared.Runtime.PlayerCore;
 using UnityEngine;
 
 namespace EstadoDeChoque.Gameplay.Assets.Game.Bootstrap
@@ -22,23 +23,17 @@ namespace EstadoDeChoque.Gameplay.Assets.Game.Bootstrap
         private void Awake()
         {
             if (!Application.isPlaying)
-            {
                 return;
-            }
 
             if (_applyStarterAtmosphere)
-            {
                 ApplyStarterAtmosphere();
-            }
 
             GameplayHudPresenter hud = EnsureHud();
-            Camera cameraToUse = EnsureCamera();
-            EnsurePlayer(cameraToUse, hud);
+            Camera camera = EnsureCamera();
+            EnsurePlayer(camera, hud);
 
             if (_buildStarterBlockout)
-            {
                 EnsureStarterBlockout();
-            }
         }
 
         private void ApplyStarterAtmosphere()
@@ -92,30 +87,18 @@ namespace EstadoDeChoque.Gameplay.Assets.Game.Bootstrap
 
         private void EnsurePlayer(Camera cameraToUse, GameplayHudPresenter hud)
         {
-            FirstPersonPlayerController existingPlayer =
-                FindFirstObjectByType<FirstPersonPlayerController>();
-            if (existingPlayer != null)
-            {
-                existingPlayer.SetHud(hud);
-                if (_playerSettings != null)
-                {
-                    existingPlayer.SetSettings(_playerSettings);
-                }
-
+            if (FindFirstObjectByType<PlayerComposer>() != null)
                 return;
-            }
 
-            var playerRoot = new GameObject("PlayerRoot");
+            var playerRoot = new GameObject("Player");
             playerRoot.transform.position = _playerSpawnPosition;
 
-            CharacterController characterController =
-                playerRoot.AddComponent<CharacterController>();
-            characterController.radius = 0.35f;
-            characterController.height = 1.78f;
-            characterController.center = new Vector3(0f, 0.89f, 0f);
-            characterController.stepOffset = 0.35f;
-            characterController.slopeLimit = 45f;
-            characterController.minMoveDistance = 0f;
+            CharacterController cc = playerRoot.AddComponent<CharacterController>();
+            cc.radius = 0.35f;
+            cc.height = 1.78f;
+            cc.center = new Vector3(0f, 0.89f, 0f);
+            cc.stepOffset = 0.35f;
+            cc.slopeLimit = 45f;
 
             Transform cameraPivot = new GameObject("CameraPivot").transform;
             cameraPivot.SetParent(playerRoot.transform, false);
@@ -126,27 +109,23 @@ namespace EstadoDeChoque.Gameplay.Assets.Game.Bootstrap
             cameraToUse.nearClipPlane = 0.05f;
             cameraToUse.fieldOfView = 72f;
 
-            Transform handAnchorRoot = new GameObject("HandAnchor").transform;
-            handAnchorRoot.SetParent(cameraPivot, false);
-            handAnchorRoot.SetLocalPositionAndRotation(
+            Transform handAnchor = new GameObject("HandAnchor").transform;
+            handAnchor.SetParent(cameraPivot, false);
+            handAnchor.SetLocalPositionAndRotation(
                 new Vector3(0.28f, -0.28f, 0.46f),
                 Quaternion.Euler(8f, -6f, 0f)
             );
+            handAnchor.gameObject.AddComponent<PlayerHoldItemAnchor>();
+            playerRoot.AddComponent<PlayerInteractionSensor>();
 
-            PlayerHoldItemAnchor holdAnchor =
-                handAnchorRoot.gameObject.AddComponent<PlayerHoldItemAnchor>();
+            new PlayerCompositionBuilder(playerRoot)
+                .WithSettings(_playerSettings ?? FirstPersonPlayerSettings.CreateRuntimeDefaults())
+                .WithCamera(cameraToUse)
+                .WithPivot(cameraPivot)
+                .Build();
 
-            FirstPersonInputSource inputSource = playerRoot.AddComponent<FirstPersonInputSource>();
-            PlayerInteractionSensor interactionSensor =
-                playerRoot.AddComponent<PlayerInteractionSensor>();
-            FirstPersonPlayerController controller =
-                playerRoot.AddComponent<FirstPersonPlayerController>();
-
-            controller.SetHud(hud);
-            if (_playerSettings != null)
-            {
-                controller.SetSettings(_playerSettings);
-            }
+            PlayerComposer composer = playerRoot.AddComponent<PlayerComposer>();
+            composer.SetHud(hud);
         }
 
         private void EnsureStarterBlockout()
@@ -298,7 +277,7 @@ namespace EstadoDeChoque.Gameplay.Assets.Game.Bootstrap
             lantern.transform.position = new Vector3(5.1f, 1.15f, -2.4f);
             lantern.transform.localScale = new Vector3(0.24f, 0.18f, 0.24f);
 
-            if (lantern.TryGetComponent<Renderer>(out Renderer renderer))
+            if (lantern.TryGetComponent(out Renderer renderer))
             {
                 renderer.material.color = new Color(0.65f, 0.58f, 0.36f);
             }

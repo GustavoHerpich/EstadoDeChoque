@@ -2,35 +2,48 @@ using System;
 using System.Collections;
 using EstadoDeChoque.Gameplay.Assets.Game.Features.Player;
 using EstadoDeChoque.Gameplay.Assets.Game.Features.UI;
+using EstadoDeChoque.Gameplay.Assets.Game.Shared.Runtime.PlayerCore;
 using UnityEngine;
 using UnityEngine.Playables;
 
 namespace EstadoDeChoque.Gameplay.Assets.Game.Features.Cutscenes
 {
+    /// <summary>
+    /// Reproduz sequências de cutscene (<see cref="CutsceneSequence"/>), gerenciando
+    /// câmera, fade, letterbox, legenda e controle do jogador durante a reprodução.
+    /// </summary>
     public sealed class CutscenePlayer : MonoBehaviour
     {
+        [Tooltip("Compositor do jogador. Necessário para bloquear controle durante cutscenes.")]
         [SerializeField]
-        private FirstPersonPlayerController _player;
+        private PlayerComposer _player;
 
+        [Tooltip("HUD de gameplay. Usado para fade, letterbox e legendas.")]
         [SerializeField]
         private GameplayHudPresenter _hud;
 
         private Coroutine _playRoutine;
 
+        /// <summary>Retorna true se uma cutscene está sendo reproduzida.</summary>
         public bool IsPlaying => _playRoutine != null;
 
-        public void Configure(FirstPersonPlayerController player, GameplayHudPresenter hud)
+        /// <summary>
+        /// Configura as dependências do player via código.
+        /// </summary>
+        public void Configure(PlayerComposer player, GameplayHudPresenter hud)
         {
             _player = player;
             _hud = hud;
         }
 
+        /// <summary>
+        /// Tenta iniciar a reprodução de uma cutscene. Retorna false se já houver uma em andamento
+        /// ou se os parâmetros obrigatórios forem nulos.
+        /// </summary>
         public bool TryPlay(CutsceneSequence cutsceneSequence, Action onCompleted = null)
         {
             if (IsPlaying || cutsceneSequence == null || _player == null || _hud == null)
-            {
                 return false;
-            }
 
             _playRoutine = StartCoroutine(PlayRoutine(cutsceneSequence, onCompleted));
             return true;
@@ -63,7 +76,7 @@ namespace EstadoDeChoque.Gameplay.Assets.Game.Features.Cutscenes
             if (cutsceneSequence.FadeInFromBlack)
             {
                 _hud.SetFade(1f);
-                yield return Fade(1f, 0f, cutsceneSequence.FadeInDuration);
+                yield return _hud.Fade(1f, 0f, cutsceneSequence.FadeInDuration);
             }
             else
             {
@@ -71,24 +84,16 @@ namespace EstadoDeChoque.Gameplay.Assets.Game.Features.Cutscenes
             }
 
             if (cutsceneSequence.UsesTimeline)
-            {
                 yield return PlayTimelineCutscene(cutsceneSequence);
-            }
             else
-            {
                 yield return PlayFallbackCutscene(cutsceneSequence, cutsceneCamera);
-            }
 
             _hud.HideSubtitle();
 
             if (cutsceneSequence.FadeOutToBlack)
-            {
-                yield return Fade(0f, 1f, cutsceneSequence.FadeOutDuration);
-            }
+                yield return _hud.Fade(0f, 1f, cutsceneSequence.FadeOutDuration);
             else
-            {
                 _hud.SetFade(0f);
-            }
 
             _hud.SetLetterbox(false, cutsceneSequence.LetterboxHeightNormalized);
 
@@ -107,9 +112,7 @@ namespace EstadoDeChoque.Gameplay.Assets.Game.Features.Cutscenes
         {
             PlayableDirector director = cutsceneSequence.TimelineDirector;
             if (director == null)
-            {
                 yield break;
-            }
 
             director.time = 0d;
             director.Evaluate();
@@ -138,8 +141,8 @@ namespace EstadoDeChoque.Gameplay.Assets.Game.Features.Cutscenes
             Camera cutsceneCamera
         )
         {
-            CutsceneSequence.CameraShot[] cameraShots = cutsceneSequence.CameraShots;
-            if (cutsceneCamera == null || cameraShots.Length == 0)
+            CutsceneSequence.CameraShot[] shots = cutsceneSequence.CameraShots;
+            if (cutsceneCamera == null || shots.Length == 0)
             {
                 yield return WaitWithSubtitles(
                     cutsceneSequence,
@@ -149,21 +152,18 @@ namespace EstadoDeChoque.Gameplay.Assets.Game.Features.Cutscenes
             }
 
             Transform cameraTransform = cutsceneCamera.transform;
-            Transform firstShot = cameraShots[0].Viewpoint;
-            if (firstShot != null)
-            {
-                ApplyTransform(cameraTransform, firstShot);
-            }
+            if (shots[0].Viewpoint != null)
+                ApplyTransform(cameraTransform, shots[0].Viewpoint);
 
             float elapsedTime = 0f;
 
-            for (var index = 0; index < cameraShots.Length; index++)
+            for (int i = 0; i < shots.Length; i++)
             {
-                Transform shotTransform = cameraShots[index].Viewpoint;
-                if (shotTransform != null && index > 0)
+                Transform shotTransform = shots[i].Viewpoint;
+                if (shotTransform != null && i > 0)
                 {
-                    Transform previousShot = cameraShots[index - 1].Viewpoint;
-                    if (previousShot != null)
+                    Transform prevShot = shots[i - 1].Viewpoint;
+                    if (prevShot != null)
                     {
                         float blendDuration = cutsceneSequence.ShotBlendDuration;
                         float blendElapsed = 0f;
@@ -171,9 +171,7 @@ namespace EstadoDeChoque.Gameplay.Assets.Game.Features.Cutscenes
                         while (blendElapsed < blendDuration)
                         {
                             if (cutsceneSequence.AllowSkip && WasSkipPressed())
-                            {
                                 yield break;
-                            }
 
                             blendElapsed += Time.deltaTime;
                             elapsedTime += Time.deltaTime;
@@ -182,10 +180,9 @@ namespace EstadoDeChoque.Gameplay.Assets.Game.Features.Cutscenes
                                 blendDuration > 0.001f
                                     ? Mathf.Clamp01(blendElapsed / blendDuration)
                                     : 1f;
-
                             cameraTransform.SetPositionAndRotation(
-                                Vector3.Lerp(previousShot.position, shotTransform.position, t),
-                                Quaternion.Slerp(previousShot.rotation, shotTransform.rotation, t)
+                                Vector3.Lerp(prevShot.position, shotTransform.position, t),
+                                Quaternion.Slerp(prevShot.rotation, shotTransform.rotation, t)
                             );
                             UpdateSubtitle(cutsceneSequence, elapsedTime);
                             yield return null;
@@ -197,18 +194,14 @@ namespace EstadoDeChoque.Gameplay.Assets.Game.Features.Cutscenes
                     }
                 }
 
-                float holdDuration = cameraShots[index].HoldDuration;
                 float holdElapsed = 0f;
-                while (holdElapsed < holdDuration)
+                while (holdElapsed < shots[i].HoldDuration)
                 {
                     if (cutsceneSequence.AllowSkip && WasSkipPressed())
-                    {
                         yield break;
-                    }
 
-                    float deltaTime = Time.deltaTime;
-                    holdElapsed += deltaTime;
-                    elapsedTime += deltaTime;
+                    holdElapsed += Time.deltaTime;
+                    elapsedTime += Time.deltaTime;
                     UpdateSubtitle(cutsceneSequence, elapsedTime);
                     yield return null;
                 }
@@ -216,62 +209,40 @@ namespace EstadoDeChoque.Gameplay.Assets.Game.Features.Cutscenes
 
             float totalDuration = cutsceneSequence.GetPlaybackDuration();
             if (elapsedTime < totalDuration)
-            {
                 yield return WaitWithSubtitles(
                     cutsceneSequence,
                     totalDuration - elapsedTime,
                     elapsedTime
                 );
-            }
         }
 
         private IEnumerator WaitWithSubtitles(
-            CutsceneSequence cutsceneSequence,
+            CutsceneSequence seq,
             float duration,
             float initialElapsed = 0f
         )
         {
-            float elapsedTime = initialElapsed;
+            float elapsed = initialElapsed;
             float waitElapsed = 0f;
 
             while (waitElapsed < duration)
             {
-                if (cutsceneSequence.AllowSkip && WasSkipPressed())
-                {
+                if (seq.AllowSkip && WasSkipPressed())
                     yield break;
-                }
 
-                float deltaTime = Time.deltaTime;
-                waitElapsed += deltaTime;
-                elapsedTime += deltaTime;
-                UpdateSubtitle(cutsceneSequence, elapsedTime);
-                yield return null;
-            }
-        }
-
-        private void UpdateSubtitle(CutsceneSequence cutsceneSequence, float elapsedTime)
-        {
-            if (cutsceneSequence.TryGetSubtitle(elapsedTime, out var subtitleCue))
-            {
-                _hud.ShowSubtitle(subtitleCue.Speaker, subtitleCue.Text);
-                return;
-            }
-
-            _hud.HideSubtitle();
-        }
-
-        private IEnumerator Fade(float fromAlpha, float toAlpha, float duration)
-        {
-            float elapsed = 0f;
-            while (elapsed < duration)
-            {
+                waitElapsed += Time.deltaTime;
                 elapsed += Time.deltaTime;
-                float t = duration > 0.001f ? Mathf.Clamp01(elapsed / duration) : 1f;
-                _hud.SetFade(Mathf.Lerp(fromAlpha, toAlpha, t));
+                UpdateSubtitle(seq, elapsed);
                 yield return null;
             }
+        }
 
-            _hud.SetFade(toAlpha);
+        private void UpdateSubtitle(CutsceneSequence seq, float elapsedTime)
+        {
+            if (seq.TryGetSubtitle(elapsedTime, out var cue))
+                _hud.ShowSubtitle(cue.Speaker, cue.Text);
+            else
+                _hud.HideSubtitle();
         }
 
         private bool WasSkipPressed()
@@ -280,17 +251,13 @@ namespace EstadoDeChoque.Gameplay.Assets.Game.Features.Cutscenes
             return input.InteractPressed || input.AttackPressed || input.JumpPressed;
         }
 
-        private static void ApplyTransform(Transform target, Transform source)
-        {
+        private static void ApplyTransform(Transform target, Transform source) =>
             target.SetPositionAndRotation(source.position, source.rotation);
-        }
 
-        private static void SetCameraEnabled(Camera targetCamera, bool enabled)
+        private static void SetCameraEnabled(Camera cam, bool enabled)
         {
-            if (targetCamera != null)
-            {
-                targetCamera.enabled = enabled;
-            }
+            if (cam != null)
+                cam.enabled = enabled;
         }
     }
 }

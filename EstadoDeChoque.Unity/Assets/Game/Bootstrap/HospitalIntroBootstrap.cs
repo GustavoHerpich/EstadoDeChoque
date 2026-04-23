@@ -3,6 +3,9 @@ using EstadoDeChoque.Gameplay.Assets.Game.Features.Hospital;
 using EstadoDeChoque.Gameplay.Assets.Game.Features.Interaction;
 using EstadoDeChoque.Gameplay.Assets.Game.Features.Player;
 using EstadoDeChoque.Gameplay.Assets.Game.Features.UI;
+using EstadoDeChoque.Gameplay.Assets.Game.Shared.Runtime.Config;
+using EstadoDeChoque.Gameplay.Assets.Game.Shared.Runtime.Dialog;
+using EstadoDeChoque.Gameplay.Assets.Game.Shared.Runtime.PlayerCore;
 using EstadoDeChoque.Gameplay.Assets.Game.Shared.Runtime.Visuals;
 using UnityEngine;
 #if UNITY_EDITOR
@@ -11,43 +14,93 @@ using UnityEditor;
 
 namespace EstadoDeChoque.Gameplay.Assets.Game.Bootstrap
 {
+    /// <summary>
+    /// Bootstrap da cena introdutória do hospital. Instancia e conecta todos os sistemas
+    /// em runtime sem dependência de prefabs pré-configurados na cena.
+    /// Os diálogos do fluxo podem ser sobrescritos via <see cref="DialogSequenceSO"/> no Inspector;
+    /// quando nulos, o controller usa o caminho de fallback interno.
+    /// </summary>
     public sealed class HospitalIntroBootstrap : MonoBehaviour
     {
         private const string _defaultMainCharacterAssetPath =
             "Assets/Models/MainCharacter1.0.blend";
 
+        [Header("Configurações do Jogador")]
+        [Tooltip("Configurações de movimento e câmera do jogador em primeira pessoa.")]
         [SerializeField]
         private FirstPersonPlayerSettings _playerSettings;
 
+        [Tooltip(
+            "Aplica névoa, luz ambiente e iluminação direcional com tom hospitalar ao iniciar."
+        )]
         [SerializeField]
         private bool _applyStarterAtmosphere = true;
 
+        [Tooltip("Posição inicial de spawn do jogador na cena.")]
         [SerializeField]
         private Vector3 _playerSpawnPosition = new(2.95f, 0f, 1.52f);
 
+        [Tooltip("Rotação inicial do jogador em graus no eixo Y (yaw).")]
         [SerializeField]
         private float _playerSpawnYaw = -126f;
 
+        [Tooltip("Se true, o corpo do jogador é renderizado apenas como sombra (shadow only).")]
         [SerializeField]
         private bool _renderPlayerBodyAsShadowsOnly = true;
 
+        [Header("Componentes do Jogador")]
+        [Tooltip(
+            "Adiciona PlayerAnimation ao jogador. Requer AnimatorController configurado no prefab ou no PlayerVisual."
+        )]
+        [SerializeField]
+        private bool _addPlayerAnimation = true;
+
+        [Header("Visuais")]
+        [Tooltip("Referência visual do modelo do jogador.")]
         [SerializeField]
         private VisualAssetReference _playerVisual = new();
 
+        [Tooltip("Referência visual do personagem Thomas.")]
         [SerializeField]
         private VisualAssetReference _thomasVisual = new();
 
+        [Tooltip("Referência visual da cama hospitalar.")]
         [SerializeField]
         private VisualAssetReference _hospitalBedVisual = new();
 
+        [Tooltip("Referência visual da cadeira ao lado da cama.")]
         [SerializeField]
         private VisualAssetReference _chairVisual = new();
 
+        [Tooltip("Referência visual da mesa de cabeceira.")]
         [SerializeField]
         private VisualAssetReference _sideTableVisual = new();
 
+        [Tooltip("Referência visual da ficha médica.")]
         [SerializeField]
         private VisualAssetReference _medicalChartVisual = new();
+
+        [Header("Diálogos (opcional)")]
+        [Tooltip(
+            "Sequência de diálogo exibida ao interagir com Thomas. "
+                + "Se nulo, o fluxo usa o fallback interno sem texto."
+        )]
+        [SerializeField]
+        private DialogSequenceSO _thomasDialog;
+
+        [Tooltip(
+            "Diálogo de fallback exibido quando a Timeline da intro não está disponível. "
+                + "Se nulo, a cutscene de intro pula direto para o despertar."
+        )]
+        [SerializeField]
+        private DialogSequenceSO _corridorCutsceneDialog;
+
+        [Tooltip(
+            "Diálogo de fallback exibido quando a Timeline da crise de calor não está disponível. "
+                + "Se nulo, o fluxo conclui sem modal de texto."
+        )]
+        [SerializeField]
+        private DialogSequenceSO _heatCutsceneFallbackDialog;
 
         private void Reset()
         {
@@ -62,20 +115,19 @@ namespace EstadoDeChoque.Gameplay.Assets.Game.Bootstrap
         private void Awake()
         {
             if (!Application.isPlaying)
-            {
                 return;
-            }
+
+            Cursor.lockState = CursorLockMode.Locked;
+            Cursor.visible = false;
 
             EnsureVisualReferences();
 
             if (_applyStarterAtmosphere)
-            {
                 ApplyHospitalAtmosphere();
-            }
 
             GameplayHudPresenter hud = EnsureHud();
             Camera cameraToUse = EnsureCamera();
-            FirstPersonPlayerController player = EnsurePlayer(cameraToUse, hud);
+            PlayerComposer player = EnsurePlayer(cameraToUse, hud);
 
             BuildHospitalIntroPrototype(player, hud);
         }
@@ -101,9 +153,7 @@ namespace EstadoDeChoque.Gameplay.Assets.Game.Bootstrap
         {
             GameplayHudPresenter existingHud = FindFirstObjectByType<GameplayHudPresenter>();
             if (existingHud != null)
-            {
                 return existingHud;
-            }
 
             return new GameObject("GameplayHud").AddComponent<GameplayHudPresenter>();
         }
@@ -111,15 +161,11 @@ namespace EstadoDeChoque.Gameplay.Assets.Game.Bootstrap
         private Camera EnsureCamera()
         {
             if (TryGetComponent(out Camera cameraToUse))
-            {
                 return cameraToUse;
-            }
 
             cameraToUse = Camera.main;
             if (cameraToUse != null)
-            {
                 return cameraToUse;
-            }
 
             var cameraObject = new GameObject("Main Camera") { tag = "MainCamera" };
             cameraToUse = cameraObject.AddComponent<Camera>();
@@ -128,58 +174,30 @@ namespace EstadoDeChoque.Gameplay.Assets.Game.Bootstrap
             return cameraToUse;
         }
 
-        private FirstPersonPlayerController EnsurePlayer(
-            Camera cameraToUse,
-            GameplayHudPresenter hud
-        )
+        private PlayerComposer EnsurePlayer(Camera cameraToUse, GameplayHudPresenter hud)
         {
-            FirstPersonPlayerController existingPlayer =
-                FindFirstObjectByType<FirstPersonPlayerController>();
-            if (existingPlayer != null)
+            PlayerComposer existing = FindFirstObjectByType<PlayerComposer>();
+            if (existing != null)
             {
-                existingPlayer.SetHud(hud);
+                existing.SetHud(hud);
                 if (_playerSettings != null)
-                {
-                    existingPlayer.SetSettings(_playerSettings);
-                }
-
-                Transform existingVisualRoot = existingPlayer.transform.Find("PlayerVisualRoot");
-                if (existingVisualRoot == null)
-                {
-                    existingVisualRoot = CreateChildRoot(
-                        existingPlayer.transform,
-                        "PlayerVisualRoot",
-                        Vector3.zero,
-                        Quaternion.identity
-                    );
-                }
-
-                if (existingVisualRoot.childCount == 0)
-                {
-                    AttachConfiguredVisual(
-                        existingVisualRoot,
-                        "PlayerVisual",
-                        _playerVisual,
-                        _renderPlayerBodyAsShadowsOnly
-                    );
-                }
-
-                return existingPlayer;
+                    existing.SetSettings(_playerSettings);
+                return existing;
             }
 
-            var playerRoot = new GameObject("PlayerRoot");
+            var playerRoot = new GameObject("Player");
             playerRoot.transform.SetPositionAndRotation(
                 _playerSpawnPosition,
                 Quaternion.Euler(0f, _playerSpawnYaw, 0f)
             );
-            CharacterController characterController =
-                playerRoot.AddComponent<CharacterController>();
-            characterController.radius = 0.35f;
-            characterController.height = 1.78f;
-            characterController.center = new Vector3(0f, 0.89f, 0f);
-            characterController.stepOffset = 0.35f;
-            characterController.slopeLimit = 45f;
-            characterController.minMoveDistance = 0f;
+
+            CharacterController cc = playerRoot.AddComponent<CharacterController>();
+            cc.radius = 0.35f;
+            cc.height = 1.78f;
+            cc.center = new Vector3(0f, 0.89f, 0f);
+            cc.stepOffset = 0.35f;
+            cc.slopeLimit = 45f;
+            cc.minMoveDistance = 0f;
 
             Transform cameraPivot = new GameObject("CameraPivot").transform;
             cameraPivot.SetParent(playerRoot.transform, false);
@@ -190,50 +208,51 @@ namespace EstadoDeChoque.Gameplay.Assets.Game.Bootstrap
             cameraToUse.nearClipPlane = 0.05f;
             cameraToUse.fieldOfView = 72f;
 
-            Transform handAnchorRoot = new GameObject("HandAnchor").transform;
-            handAnchorRoot.SetParent(cameraPivot, false);
-            handAnchorRoot.SetLocalPositionAndRotation(
+            Transform handAnchor = new GameObject("HandAnchor").transform;
+            handAnchor.SetParent(cameraPivot, false);
+            handAnchor.SetLocalPositionAndRotation(
                 new Vector3(0.28f, -0.28f, 0.46f),
                 Quaternion.Euler(8f, -6f, 0f)
             );
-            handAnchorRoot.gameObject.AddComponent<PlayerHoldItemAnchor>();
+            handAnchor.gameObject.AddComponent<PlayerHoldItemAnchor>();
 
-            Transform playerVisualRoot = CreateChildRoot(
+            Transform visualRoot = CreateChildRoot(
                 playerRoot.transform,
                 "PlayerVisualRoot",
                 Vector3.zero,
                 Quaternion.identity
             );
             AttachConfiguredVisual(
-                playerVisualRoot,
+                visualRoot,
                 "PlayerVisual",
                 _playerVisual,
                 _renderPlayerBodyAsShadowsOnly
             );
 
-            playerRoot.AddComponent<FirstPersonInputSource>();
             playerRoot.AddComponent<PlayerInteractionSensor>();
-            FirstPersonPlayerController controller =
-                playerRoot.AddComponent<FirstPersonPlayerController>();
 
-            controller.SetHud(hud);
-            if (_playerSettings != null)
-            {
-                controller.SetSettings(_playerSettings);
-            }
+            FirstPersonPlayerSettings settings =
+                _playerSettings ?? FirstPersonPlayerSettings.CreateRuntimeDefaults();
 
-            return controller;
+            PlayerCompositionBuilder builder = new PlayerCompositionBuilder(playerRoot)
+                .WithSettings(settings)
+                .WithCamera(cameraToUse)
+                .WithPivot(cameraPivot);
+
+            if (_addPlayerAnimation)
+                builder = builder.WithAnimation();
+
+            builder.Build();
+
+            PlayerComposer composer = playerRoot.AddComponent<PlayerComposer>();
+            composer.SetHud(hud);
+            return composer;
         }
 
-        private void BuildHospitalIntroPrototype(
-            FirstPersonPlayerController player,
-            GameplayHudPresenter hud
-        )
+        private void BuildHospitalIntroPrototype(PlayerComposer player, GameplayHudPresenter hud)
         {
             if (FindFirstObjectByType<HospitalIntroFlowController>() != null)
-            {
                 return;
-            }
 
             var root = new GameObject("HospitalIntroPrototype");
 
@@ -384,6 +403,7 @@ namespace EstadoDeChoque.Gameplay.Assets.Game.Bootstrap
                 new Vector3(0.76f, 0.16f, 2f),
                 new Color(0.72f, 0.74f, 0.78f)
             );
+
             CreateCube(
                 root.transform,
                 "EastWallLower",
@@ -559,7 +579,7 @@ namespace EstadoDeChoque.Gameplay.Assets.Game.Bootstrap
                 new Vector3(0f, 0.43f, -0.02f),
                 Quaternion.Euler(68f, 0f, 0f)
             );
-            GameObject chartClip = CreateCube(
+            CreateCube(
                 chartStandRoot,
                 "Clip",
                 new Vector3(0f, 0.58f, -0.08f),
@@ -569,7 +589,6 @@ namespace EstadoDeChoque.Gameplay.Assets.Game.Bootstrap
             SetColliderEnabled(chartSupport, false);
             SetColliderEnabled(chartBackdrop, false);
             SetColliderEnabled(chartObject, false);
-            SetColliderEnabled(chartClip, false);
 
             GameObject chartInteractionZone = new("ChartInteractionZone");
             chartInteractionZone.transform.SetParent(chartStandRoot, false);
@@ -677,7 +696,13 @@ namespace EstadoDeChoque.Gameplay.Assets.Game.Bootstrap
                 bedInteractable,
                 cutscenePlayer,
                 introCutscene,
-                heatCutscene
+                heatCutscene,
+                // DialogSequenceSOs são opcionais: nulos significam que o controller
+                // usará o caminho de fallback interno (sem modal de texto).
+                // Para customizar os diálogos, atribua os SOs no Inspector.
+                _thomasDialog,
+                _corridorCutsceneDialog,
+                _heatCutsceneFallbackDialog
             );
 
             medicalChart.Configure(
@@ -692,7 +717,7 @@ namespace EstadoDeChoque.Gameplay.Assets.Game.Bootstrap
 
         private static void CreateHospitalCutsceneSetup(
             Transform parent,
-            FirstPersonPlayerController player,
+            PlayerComposer player,
             GameplayHudPresenter hud,
             out CutscenePlayer cutscenePlayer,
             out CutsceneSequence introCutscene,
@@ -708,7 +733,6 @@ namespace EstadoDeChoque.Gameplay.Assets.Game.Bootstrap
 
             cutscenePlayer = cutsceneRoot.gameObject.AddComponent<CutscenePlayer>();
             cutscenePlayer.Configure(player, hud);
-
             Camera cutsceneCamera = CreateCutsceneCamera(cutsceneRoot, player.PlayerCamera);
 
             Transform introRoot = CreateChildRoot(
@@ -717,19 +741,19 @@ namespace EstadoDeChoque.Gameplay.Assets.Game.Bootstrap
                 Vector3.zero,
                 Quaternion.identity
             );
-            Transform introShotA = CreateShotAnchor(
+            Transform introShotA = CreateChildRoot(
                 introRoot,
                 "ShotA",
                 new Vector3(1.75f, 1.68f, -12.7f),
                 Quaternion.Euler(4f, 0f, 0f)
             );
-            Transform introShotB = CreateShotAnchor(
+            Transform introShotB = CreateChildRoot(
                 introRoot,
                 "ShotB",
                 new Vector3(1.75f, 1.55f, -7.5f),
                 Quaternion.Euler(5f, 0f, 0f)
             );
-            Transform introShotC = CreateShotAnchor(
+            Transform introShotC = CreateChildRoot(
                 introRoot,
                 "ShotC",
                 new Vector3(1.15f, 1.72f, 0.1f),
@@ -738,37 +762,43 @@ namespace EstadoDeChoque.Gameplay.Assets.Game.Bootstrap
 
             introCutscene = introRoot.gameObject.AddComponent<CutsceneSequence>();
             introCutscene.ConfigureFallback(
-                cutsceneCamera,
-                new[]
+                new FallbackConfig
                 {
-                    new CutsceneSequence.CameraShot(introShotA, 1.6f),
-                    new CutsceneSequence.CameraShot(introShotB, 1.5f),
-                    new CutsceneSequence.CameraShot(introShotC, 1.8f),
-                },
-                new[]
-                {
-                    new CutsceneSequence.SubtitleCue(
-                        0.15f,
-                        2.15f,
-                        string.Empty,
-                        "Uma ambulancia chega ao hospital. As portas duplas se abrem e Dante e levado as pressas pelo corredor."
-                    ),
-                    new CutsceneSequence.SubtitleCue(2.65f, 1.1f, "MEDICA", "O que aconteceu?"),
-                    new CutsceneSequence.SubtitleCue(
-                        3.85f,
-                        1.7f,
-                        "THOMAS",
-                        "Dante e meu amigo... eu nao sei muito bem. So recebi a ligacao e vim correndo."
-                    ),
-                    new CutsceneSequence.SubtitleCue(5.7f, 1f, "ENFERMEIROS", "Saiam da frente!"),
-                },
-                true,
-                0.8f,
-                true,
-                0.8f,
-                true,
-                0.75f,
-                6.6f
+                    CutsceneCamera = cutsceneCamera,
+                    CameraShots = new[]
+                    {
+                        new CutsceneSequence.CameraShot(introShotA, 1.6f),
+                        new CutsceneSequence.CameraShot(introShotB, 1.5f),
+                        new CutsceneSequence.CameraShot(introShotC, 1.8f),
+                    },
+                    SubtitleCues = new[]
+                    {
+                        new CutsceneSequence.SubtitleCue(
+                            0.15f,
+                            2.15f,
+                            string.Empty,
+                            "Uma ambulancia chega..."
+                        ),
+                        new CutsceneSequence.SubtitleCue(2.65f, 1.1f, "MEDICA", "O que aconteceu?"),
+                        new CutsceneSequence.SubtitleCue(
+                            3.85f,
+                            1.7f,
+                            "THOMAS",
+                            "Dante e meu amigo..."
+                        ),
+                        new CutsceneSequence.SubtitleCue(
+                            5.7f,
+                            1f,
+                            "ENFERMEIROS",
+                            "Saiam da frente!"
+                        ),
+                    },
+                    FadeInFromBlack = true,
+                    FadeInDuration = 0.8f,
+                    FadeOutToBlack = true,
+                    FadeOutDuration = 0.8f,
+                    FallbackDuration = 6.6f,
+                }
             );
 
             Transform heatRoot = CreateChildRoot(
@@ -777,19 +807,19 @@ namespace EstadoDeChoque.Gameplay.Assets.Game.Bootstrap
                 Vector3.zero,
                 Quaternion.identity
             );
-            Transform heatShotA = CreateShotAnchor(
+            Transform heatShotA = CreateChildRoot(
                 heatRoot,
                 "ShotA",
                 new Vector3(4.55f, 1.55f, 3.05f),
                 Quaternion.Euler(8f, -145f, 0f)
             );
-            Transform heatShotB = CreateShotAnchor(
+            Transform heatShotB = CreateChildRoot(
                 heatRoot,
                 "ShotB",
                 new Vector3(2.05f, 1.42f, 1.38f),
                 Quaternion.Euler(9f, 92f, 0f)
             );
-            Transform heatShotC = CreateShotAnchor(
+            Transform heatShotC = CreateChildRoot(
                 heatRoot,
                 "ShotC",
                 new Vector3(-3.15f, 1.7f, -3.7f),
@@ -798,41 +828,49 @@ namespace EstadoDeChoque.Gameplay.Assets.Game.Bootstrap
 
             heatCutscene = heatRoot.gameObject.AddComponent<CutsceneSequence>();
             heatCutscene.ConfigureFallback(
-                cutsceneCamera,
-                new[]
+                new FallbackConfig
                 {
-                    new CutsceneSequence.CameraShot(heatShotA, 1.4f),
-                    new CutsceneSequence.CameraShot(heatShotB, 1.4f),
-                    new CutsceneSequence.CameraShot(heatShotC, 1.6f),
-                },
-                new[]
-                {
-                    new CutsceneSequence.SubtitleCue(
-                        0.2f,
-                        2f,
-                        string.Empty,
-                        "Dante acorda no meio da madrugada. O quarto parece mais quente e o ar fica pesado."
-                    ),
-                    new CutsceneSequence.SubtitleCue(
-                        2.5f,
-                        2.1f,
-                        string.Empty,
-                        "O peito aperta, a respiracao falha e o hospital inteiro soa distante, como se estivesse submerso."
-                    ),
-                    new CutsceneSequence.SubtitleCue(
-                        4.95f,
-                        1.7f,
-                        string.Empty,
-                        "Algo dentro dele tentava despertar."
-                    ),
-                },
-                false,
-                0f,
-                true,
-                1.1f,
-                true,
-                0.7f,
-                6.8f
+                    CutsceneCamera = cutsceneCamera,
+                    CameraShots = new[]
+                    {
+                        new CutsceneSequence.CameraShot(heatShotA, 1.4f),
+                        new CutsceneSequence.CameraShot(heatShotB, 1.4f),
+                        new CutsceneSequence.CameraShot(heatShotC, 1.6f),
+                    },
+                    SubtitleCues = new[]
+                    {
+                        new CutsceneSequence.SubtitleCue(
+                            0.2f,
+                            2f,
+                            string.Empty,
+                            "Dante acorda no meio da madrugada. O quarto parece mais quente e o ar fica pesado."
+                        ),
+                        new CutsceneSequence.SubtitleCue(
+                            2.5f,
+                            2.1f,
+                            string.Empty,
+                            "O peito aperta, a respiracao falha e o hospital inteiro soa distante, como se estivesse submerso."
+                        ),
+                        new CutsceneSequence.SubtitleCue(
+                            4.95f,
+                            1.7f,
+                            string.Empty,
+                            "Algo dentro dele tentava despertar."
+                        ),
+                    },
+                    FadeInFromBlack = false,
+                    FadeInDuration = 0f,
+                    FadeOutToBlack = true,
+                    FadeOutDuration = 1.1f,
+                    AllowSkip = true,
+                    ShotBlendDuration = 0.7f,
+                    FallbackDuration = 6.8f,
+                    ShowLetterbox = true,
+                    LetterboxHeightNormalized = 0.12f,
+                    LockMovement = true,
+                    LockLook = true,
+                    LockInteraction = true,
+                }
             );
         }
 
@@ -854,9 +892,7 @@ namespace EstadoDeChoque.Gameplay.Assets.Game.Bootstrap
                 | _thomasVisual.TryAutoAssign(defaultCharacter);
 
             if (changed && !Application.isPlaying)
-            {
                 EditorUtility.SetDirty(this);
-            }
 #endif
         }
 
@@ -869,14 +905,10 @@ namespace EstadoDeChoque.Gameplay.Assets.Game.Bootstrap
         )
         {
             if (visualRoot == null || visualReference == null || !visualReference.HasPrefab)
-            {
                 return null;
-            }
 
             if (!visualRoot.TryGetComponent(out VisualAttachmentSlot attachmentSlot))
-            {
                 attachmentSlot = visualRoot.gameObject.AddComponent<VisualAttachmentSlot>();
-            }
 
             attachmentSlot.Configure(
                 visualReference,
@@ -898,16 +930,6 @@ namespace EstadoDeChoque.Gameplay.Assets.Game.Bootstrap
             childRoot.SetParent(parent, false);
             childRoot.SetLocalPositionAndRotation(localPosition, localRotation);
             return childRoot;
-        }
-
-        private static Transform CreateShotAnchor(
-            Transform parent,
-            string name,
-            Vector3 localPosition,
-            Quaternion localRotation
-        )
-        {
-            return CreateChildRoot(parent, name, localPosition, localRotation);
         }
 
         private static Camera CreateCutsceneCamera(Transform parent, Camera referenceCamera)
@@ -946,9 +968,7 @@ namespace EstadoDeChoque.Gameplay.Assets.Game.Bootstrap
             capsule.transform.localScale = scale;
 
             if (capsule.TryGetComponent(out Renderer renderer))
-            {
                 renderer.material.color = color;
-            }
 
             return capsule;
         }
@@ -968,9 +988,7 @@ namespace EstadoDeChoque.Gameplay.Assets.Game.Bootstrap
             cube.transform.localScale = scale;
 
             if (cube.TryGetComponent(out Renderer renderer))
-            {
                 renderer.material.color = color;
-            }
 
             return cube;
         }
@@ -978,9 +996,7 @@ namespace EstadoDeChoque.Gameplay.Assets.Game.Bootstrap
         private static void SetColliderEnabled(GameObject target, bool enabled)
         {
             if (target == null || !target.TryGetComponent(out Collider collider))
-            {
                 return;
-            }
 
             collider.enabled = enabled;
         }

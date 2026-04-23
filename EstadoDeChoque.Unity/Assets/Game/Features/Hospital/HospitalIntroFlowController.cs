@@ -3,10 +3,16 @@ using System.Collections;
 using EstadoDeChoque.Gameplay.Assets.Game.Features.Cutscenes;
 using EstadoDeChoque.Gameplay.Assets.Game.Features.Player;
 using EstadoDeChoque.Gameplay.Assets.Game.Features.UI;
+using EstadoDeChoque.Gameplay.Assets.Game.Shared.Runtime.Dialog;
+using EstadoDeChoque.Gameplay.Assets.Game.Shared.Runtime.PlayerCore;
 using UnityEngine;
 
 namespace EstadoDeChoque.Gameplay.Assets.Game.Features.Hospital
 {
+    /// <summary>
+    /// Orquestra o fluxo narrativo da cena introdutória do hospital.
+    /// Gerencia estados de interação, cutscenes e sequências de diálogo.
+    /// </summary>
     public sealed class HospitalIntroFlowController : MonoBehaviour
     {
         private static readonly WaitForSeconds _waitForSeconds1_2 = new(1.2f);
@@ -23,51 +29,57 @@ namespace EstadoDeChoque.Gameplay.Assets.Game.Features.Hospital
             Completed,
         }
 
+        [Header("Referências do Jogador e HUD")]
+        [Tooltip("Compositor do jogador responsável por controle de input e câmera.")]
         [SerializeField]
-        private FirstPersonPlayerController _player;
+        private PlayerComposer _player;
 
+        [Tooltip("Presenter do HUD de gameplay para modais, objetivos e fade.")]
         [SerializeField]
         private GameplayHudPresenter _hud;
 
+        [Header("Interactables")]
+        [Tooltip("Ficha médica interagível. Disponibilizada após o despertar de Dante.")]
         [SerializeField]
         private MedicalChartInteractable _medicalChart;
 
+        [Tooltip("NPC Thomas. Disponibilizado após leitura da ficha médica.")]
         [SerializeField]
         private HospitalNpcInteractable _thomas;
 
+        [Tooltip("Maca de descanso. Disponibilizada após o diálogo com Thomas.")]
         [SerializeField]
         private BedRestInteractable _bed;
 
+        [Header("Cutscenes")]
+        [Tooltip("Player de cutscenes utilizado para reproduzir sequências cinemáticas.")]
         [SerializeField]
         private CutscenePlayer _cutscenePlayer;
 
+        [Tooltip("Sequência de cutscene da intro (corredor do hospital).")]
         [SerializeField]
         private CutsceneSequence _introCutscene;
 
+        [Tooltip("Sequência de cutscene da crise de calor de Dante.")]
         [SerializeField]
         private CutsceneSequence _heatCutscene;
 
-        private readonly string[] _thomasDialogue =
-        {
-            "DANTE: Ugh... minha cabeca... Onde diabos eu estou?",
-            "THOMAS: Calma, Dante. Voce esta no hospital. Parece que passou bem mal.",
-            "DANTE: Mal? Sinto como se tivesse sido atropelado por um caminhao...",
-            "THOMAS: Eu tambem nao entendi muito bem. So vim correndo quando recebi a ligacao.",
-            "DANTE: Ja disseram quando eu posso sair? Voce sabe que eu odeio hospitais.",
-            "THOMAS: Se voce descansar mais um pouco, devem te liberar logo. Tenta deitar de novo.",
-        };
+        [Header("Diálogos")]
+        [Tooltip("Diálogo exibido quando o jogador interage com Thomas.")]
+        [SerializeField]
+        private DialogSequenceSO _thomasDialog;
 
-        private readonly string[] _corridorCutscene =
-        {
-            "Uma ambulancia corta a entrada do hospital. As portas duplas se abrem bruscamente e Dante e levado pelo corredor em uma maca.",
-            "MEDICA: O que aconteceu?\nTHOMAS: Dante e meu amigo... eu nao sei muito bem. So recebi a ligacao e vim correndo.\nENFERMEIROS: Saiam da frente!",
-        };
+        [Tooltip(
+            "Fallback textual para a cutscene do corredor quando a Timeline não está disponível."
+        )]
+        [SerializeField]
+        private DialogSequenceSO _corridorCutsceneDialog;
 
-        private readonly string[] _heatCutsceneFallback =
-        {
-            "Dante acorda no meio da madrugada. O calor cresce de repente, o peito aperta e o som do hospital parece afundar sob a agua.",
-            "A respiracao fica irregular. Antes que ele entenda o que esta acontecendo, a visao escurece. Algo dentro dele tentava despertar.",
-        };
+        [Tooltip(
+            "Fallback textual para a cutscene de calor intenso quando a Timeline não está disponível."
+        )]
+        [SerializeField]
+        private DialogSequenceSO _heatCutsceneFallbackDialog;
 
         private FlowState _state;
         private string _activeModalTitle;
@@ -76,15 +88,22 @@ namespace EstadoDeChoque.Gameplay.Assets.Game.Features.Hospital
         private Action _activeModalCompleted;
         private float _ignoreAdvanceUntil;
 
+        /// <summary>
+        /// Configura todas as dependências do controller via código.
+        /// Útil para injeção em testes ou bootstrap de cena.
+        /// </summary>
         public void Configure(
-            FirstPersonPlayerController player,
+            PlayerComposer player,
             GameplayHudPresenter hud,
             MedicalChartInteractable medicalChart,
             HospitalNpcInteractable thomas,
             BedRestInteractable bed,
             CutscenePlayer cutscenePlayer,
             CutsceneSequence introCutscene,
-            CutsceneSequence heatCutscene
+            CutsceneSequence heatCutscene,
+            DialogSequenceSO thomasDialog,
+            DialogSequenceSO corridorCutsceneDialog,
+            DialogSequenceSO heatCutsceneFallbackDialog
         )
         {
             _player = player;
@@ -95,6 +114,9 @@ namespace EstadoDeChoque.Gameplay.Assets.Game.Features.Hospital
             _cutscenePlayer = cutscenePlayer;
             _introCutscene = introCutscene;
             _heatCutscene = heatCutscene;
+            _thomasDialog = thomasDialog;
+            _corridorCutsceneDialog = corridorCutsceneDialog;
+            _heatCutsceneFallbackDialog = heatCutsceneFallbackDialog;
         }
 
         private IEnumerator Start()
@@ -102,9 +124,7 @@ namespace EstadoDeChoque.Gameplay.Assets.Game.Features.Hospital
             yield return null;
 
             if (_player == null || _hud == null)
-            {
                 yield break;
-            }
 
             _medicalChart?.SetAvailability(false);
             _thomas?.SetAvailability(false);
@@ -127,34 +147,40 @@ namespace EstadoDeChoque.Gameplay.Assets.Game.Features.Hospital
                 yield break;
             }
 
-            OpenModalSequence("Corredor do Hospital", _corridorCutscene, BeginWakeUpSequence);
+            if (_corridorCutsceneDialog != null && _corridorCutsceneDialog.HasContent)
+            {
+                OpenModalSequence(
+                    _corridorCutsceneDialog.Title,
+                    _corridorCutsceneDialog.Pages,
+                    BeginWakeUpSequence
+                );
+            }
+            else
+            {
+                BeginWakeUpSequence();
+            }
         }
 
         private void Update()
         {
             if (_activeModalPages == null || _player == null)
-            {
                 return;
-            }
 
             if (Time.unscaledTime < _ignoreAdvanceUntil)
-            {
                 return;
-            }
 
             PlayerInputFrame input = _player.CurrentInputFrame;
             if (input.InteractPressed || input.AttackPressed || input.JumpPressed)
-            {
                 AdvanceModal();
-            }
         }
 
+        /// <summary>
+        /// Chamado pelo sistema de interação quando o jogador interage com a ficha médica.
+        /// </summary>
         public void HandleMedicalChartInteracted(MedicalChartInteractable medicalChart)
         {
             if (_state != FlowState.WaitingForChart || medicalChart == null)
-            {
                 return;
-            }
 
             OpenModalSequence(
                 medicalChart.DocumentTitle,
@@ -170,16 +196,27 @@ namespace EstadoDeChoque.Gameplay.Assets.Game.Features.Hospital
             );
         }
 
+        /// <summary>
+        /// Chamado pelo sistema de interação quando o jogador interage com um NPC.
+        /// </summary>
         public void HandleNpcInteracted(HospitalNpcInteractable npc)
         {
             if (_state != FlowState.WaitingForThomas || npc == null)
-            {
                 return;
-            }
+
+            string title =
+                (_thomasDialog != null && !string.IsNullOrWhiteSpace(_thomasDialog.Title))
+                    ? _thomasDialog.Title
+                    : npc.DisplayName;
+
+            string[] pages =
+                _thomasDialog != null && _thomasDialog.HasContent
+                    ? _thomasDialog.Pages
+                    : Array.Empty<string>();
 
             OpenModalSequence(
-                npc.DisplayName,
-                _thomasDialogue,
+                title,
+                pages,
                 () =>
                 {
                     _state = FlowState.WaitingForBed;
@@ -191,12 +228,13 @@ namespace EstadoDeChoque.Gameplay.Assets.Game.Features.Hospital
             );
         }
 
+        /// <summary>
+        /// Chamado pelo sistema de interação quando o jogador interage com a maca.
+        /// </summary>
         public void HandleBedInteracted(BedRestInteractable bedInteractable)
         {
             if (_state != FlowState.WaitingForBed || bedInteractable == null)
-            {
                 return;
-            }
 
             StartCoroutine(RunHeatCutscene());
         }
@@ -219,9 +257,20 @@ namespace EstadoDeChoque.Gameplay.Assets.Game.Features.Hospital
             }
 
             yield return _waitForSeconds1_2;
-            yield return Fade(0f, 1f, 1.6f);
+            yield return _hud.Fade(0f, 1f, 1.6f);
 
-            OpenModalSequence("Calor Intenso", _heatCutsceneFallback, OnHeatCutsceneCompleted);
+            if (_heatCutsceneFallbackDialog != null && _heatCutsceneFallbackDialog.HasContent)
+            {
+                OpenModalSequence(
+                    _heatCutsceneFallbackDialog.Title,
+                    _heatCutsceneFallbackDialog.Pages,
+                    OnHeatCutsceneCompleted
+                );
+            }
+            else
+            {
+                OnHeatCutsceneCompleted();
+            }
         }
 
         private void OnHeatCutsceneCompleted()
@@ -233,7 +282,7 @@ namespace EstadoDeChoque.Gameplay.Assets.Game.Features.Hospital
                 3f
             );
             _player.SetControlState(true, true, true);
-            StartCoroutine(Fade(1f, 0f, 1f));
+            StartCoroutine(_hud.Fade(1f, 0f, 1f));
         }
 
         private void OpenModalSequence(string title, string[] pages, Action onCompleted)
@@ -286,24 +335,10 @@ namespace EstadoDeChoque.Gameplay.Assets.Game.Features.Hospital
             _player.SetControlState(false, true, true);
             _hud.ShowObjective("Leia a ficha medica de Dante.");
 
-            yield return Fade(1f, 0f, 1.4f);
+            yield return _hud.Fade(1f, 0f, 1.4f);
 
             _hud.ShowMessage("Dante desperta confuso e desorientado na sala do hospital.", 2.5f);
             _state = FlowState.WaitingForChart;
-        }
-
-        private IEnumerator Fade(float fromAlpha, float toAlpha, float duration)
-        {
-            var elapsed = 0f;
-            while (elapsed < duration)
-            {
-                elapsed += Time.deltaTime;
-                var t = duration > 0.001f ? Mathf.Clamp01(elapsed / duration) : 1f;
-                _hud.SetFade(Mathf.Lerp(fromAlpha, toAlpha, t));
-                yield return null;
-            }
-
-            _hud.SetFade(toAlpha);
         }
     }
 }
