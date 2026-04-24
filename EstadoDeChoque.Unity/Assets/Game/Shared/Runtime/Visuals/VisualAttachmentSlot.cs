@@ -60,6 +60,14 @@ namespace EstadoDeChoque.Gameplay.Assets.Game.Shared.Runtime.Visuals
             }
         }
 
+        /// <summary>
+        /// Define se o visual deve ser renderizado apenas como sombra.
+        /// </summary>
+        public void SetRenderShadowOnly(bool renderShadowsOnly)
+        {
+            _renderShadowsOnly = renderShadowsOnly;
+        }
+
         public GameObject ApplyConfiguredVisual()
         {
             if (_visual == null || !_visual.HasPrefab)

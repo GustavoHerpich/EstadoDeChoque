@@ -123,7 +123,10 @@ namespace EstadoDeChoque.Gameplay.Assets.Game.Shared.Runtime.PlayerCore
                 component.SetMovement(_movements[0]);
             }
             // Movement must be added before animation/sprite for auto-connection to work
-            Debug.Assert(_movements.Count > 0, "PlayerMovement should be added before PlayerAnimation for proper auto-connection.");
+            Debug.Assert(
+                _movements.Count > 0,
+                "PlayerMovement should be added before PlayerAnimation for proper auto-connection."
+            );
         }
 
         public void AddSprite(PlayerSprite component)
@@ -135,7 +138,10 @@ namespace EstadoDeChoque.Gameplay.Assets.Game.Shared.Runtime.PlayerCore
                 component.SetMovement(_movements[0]);
             }
             // Movement must be added before animation/sprite for auto-connection to work
-            Debug.Assert(_movements.Count > 0, "PlayerMovement should be added before PlayerSprite for proper auto-connection.");
+            Debug.Assert(
+                _movements.Count > 0,
+                "PlayerMovement should be added before PlayerSprite for proper auto-connection."
+            );
         }
 
         public void SetCamera(Camera camera)
